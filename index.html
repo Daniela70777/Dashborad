@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard E-commerce · TechTrends</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- SheetJS (XLSX) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Custom styles (opcional) -->
+  <link rel="stylesheet" href="assets/styles/style.css">
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-semibold" href="#">TechTrends · Dashboard</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto gap-2">
+          <li class="nav-item">
+            <button id="btn-recargar" class="btn btn-outline-light btn-sm">Recargar datos</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container my-4">
+    <!-- Título -->
+    <div class="row g-3">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-body">
+            <h1 class="text-center m-0">TechTrends</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selector Top -->
+    <div class="row g-3 mt-1">
+      <div class="col-12 col-lg-12">
+        <div class="card">
+          <div class="card-body d-flex flex-wrap align-items-center gap-2 text-center">
+            <div class="me-2 fw-semibold">Top productos por:</div>
+            <select id="sel-top-metrica" class="form-select form-select-sm w-auto">
+              <option value="total">Total de venta</option>
+              <option value="cantidad">Cantidad</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row g-3 mt-1">
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Ventas totales mensuales</span>
+            <small class="text-muted">Suma por mes</small>
+          </div>
+          <div class="card-body" style="height: 280px;">
+            <canvas id="chartLinea"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Top 5 productos más vendidos</span>
+            <small class="text-muted" id="subtitulo-barras">por total de venta</small>
+          </div>
+          <div class="card-body" style="height: 280px;">
+            <canvas id="chartBarras"></canvas>
+          </div>
+          
+        </div>
+      </div>
+
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Distribución por método de pago</span>
+            <small class="text-muted">participación por total de venta</small>
+          </div>
+          <div class="card-body" style="height: 280px;">
+            <canvas id="chartTorta"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-xl-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Ventas por región / país</span>
+            <small class="text-muted">suma por región o país</small>
+          </div>
+          <div class="card-body" style="height: 280px;">
+            <canvas id="chartRegion"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="row g-3 mt-1">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <strong class="me-auto">Vista de datos</strong>
+              <input id="buscador" type="search" class="form-control form-control-sm w-auto" placeholder="Filtrar…">
+              <small class="text-muted">Hoja: <span id="nombre-hoja">—</span></small>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0" id="tabla-datos">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="container my-4 text-center text-muted small">
+    Natalia Torres
+  </footer>
+
+  <!-- Bootstrap Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  // -------- Configuración --------
+  const RUTA_EXCEL = "assets/datos/datos.xlsx";
+
+  // Estado de gráficos (FALTABA ESTO)
+  let charts = { linea: null, barras: null, torta: null, region: null };
+
+  // Cache de filas para filtrar en tabla
+  let FILAS_CACHE = [];
+
+  // Mapeo de nombres de columnas (insensible a mayúsculas/acentos)
+  const MAPEADO = {
+    fecha: ["fecha","date","día","dia","mes","periodo","periodo de venta","periodo_venta","año","anio","year"],
+    producto: ["producto","item","articulo","artículo","sku","nombre","nombre producto","nombre_producto"],
+    categoria: ["categoria","categoría","categoria producto","categoria_producto","familia","rubro"],
+    cantidad: ["cantidad","unidades","qty","cant"],
+    precioUnit: ["precio","precio unitario","precio_unitario","valor unitario","valor_unitario","p.u.","pu"],
+    total: ["total","monto","importe","ventas","venta total","venta_total","ingreso","ingresos","subtotal","neto","bruto"],
+    metodoPago: ["metodo de pago","método de pago","metodo_pago","medio de pago","medio_pago","payment","forma de pago","forma_pago"],
+    region: ["region","región","pais","país","country","estado","provincia","ciudad","zona"]
+  };
+
+  // Utilidades
+  const normalizar = (s) => String(s || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim();
+
+  const numero = v => {
+    if (typeof v === "number") return v;
+    if (typeof v === "string") return Number(v.replace(/[^\d.-]/g, "")) || 0;
+    return 0;
+  };
+
+  const esFechaValida = (v) => {
+    if (v instanceof Date && !isNaN(v)) return true;
+    if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return !!d; }
+    const t = Date.parse(v); return !isNaN(t);
+  };
+  const aFechaJS = (v) => {
+    if (v instanceof Date) return v;
+    if (typeof v === "number") {
+      const d = XLSX.SSF.parse_date_code(v);
+      if (d) return new Date(Date.UTC(d.y, (d.m||1)-1, d.d||1));
+    }
+    const t = Date.parse(v);
+    if (!isNaN(t)) return new Date(t);
+    return null;
+  };
+
+  function encontrarCol(headers, candidatos) {
+    const normHeaders = headers.map(h => normalizar(h));
+    for (const nombre of candidatos) {
+      const i = normHeaders.indexOf(normalizar(nombre));
+      if (i !== -1) return headers[i];
+    }
+    return null;
+  }
+
+  function detectarColumnas(filas) {
+    if (!filas.length) return {};
+    const headers = Object.keys(filas[0]);
+
+    let fechaCol     = encontrarCol(headers, MAPEADO.fecha)     || null;
+    let productoCol  = encontrarCol(headers, MAPEADO.producto)  || null;
+    let categoriaCol = encontrarCol(headers, MAPEADO.categoria) || null;
+    let cantidadCol  = encontrarCol(headers, MAPEADO.cantidad)  || null;
+    let precioCol    = encontrarCol(headers, MAPEADO.precioUnit)|| null;
+    let totalCol     = encontrarCol(headers, MAPEADO.total)     || null;
+    let pagoCol      = encontrarCol(headers, MAPEADO.metodoPago)|| null;
+    let regionCol    = encontrarCol(headers, MAPEADO.region)    || null;
+
+    // Heurísticas
+    if (!fechaCol) {
+      for (const h of headers) {
+        if (filas.some(r => esFechaValida(r[h]))) { fechaCol = h; break; }
+      }
+    }
+    if (!totalCol) {
+      totalCol = headers.find(h => /total|monto|importe|venta|ingreso|subtotal|neto|bruto/i.test(h)) || null;
+    }
+
+    return { fechaCol, productoCol, categoriaCol, cantidadCol, precioCol, totalCol, pagoCol, regionCol, headers };
+  }
+
+  async function cargarExcel(ruta) {
+    const resp = await fetch(ruta, { cache: "no-store" });
+    if (!resp.ok) throw new Error("No se pudo cargar el archivo Excel: " + resp.status);
+    const data = await resp.arrayBuffer();
+    const libro = XLSX.read(data, { type: "array" });
+    const nombreHoja = libro.SheetNames[0];
+    const hoja = libro.Sheets[nombreHoja];
+    const filas = XLSX.utils.sheet_to_json(hoja, { defval: "", raw: true });
+    return { filas, nombreHoja };
+  }
+
+  function renderTabla(filas) {
+    const thead = document.querySelector("#tabla-datos thead");
+    const tbody = document.querySelector("#tabla-datos tbody");
+    thead.innerHTML = ""; tbody.innerHTML = "";
+    if (!filas.length) return;
+
+    const headers = Object.keys(filas[0]);
+    const tr = document.createElement("tr");
+    headers.forEach(h => { const th=document.createElement("th"); th.textContent=h; tr.appendChild(th); });
+    thead.appendChild(tr);
+
+    const frag = document.createDocumentFragment();
+    filas.forEach(row => {
+      const tr = document.createElement("tr");
+      headers.forEach(h => {
+        const td=document.createElement("td");
+        td.textContent = typeof row[h]==="number"? row[h] : String(row[h]);
+        tr.appendChild(td);
+      });
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  }
+
+  function enriquecerYTransformar(filas, cols) {
+    const { fechaCol, productoCol, cantidadCol, precioCol, totalCol, pagoCol, regionCol } = cols;
+
+    const filasEnriquecidas = filas.map(r => {
+      const cantidad = cantidadCol ? numero(r[cantidadCol]) : 0;
+      const precio   = precioCol ? numero(r[precioCol]) : 0;
+      const total    = totalCol ? numero(r[totalCol]) : (cantidad * precio);
+      return { ...r, __cantidad__: cantidad, __total__: total };
+    });
+
+    // Ventas por mes
+    const mesMap = new Map();
+    for (const r of filasEnriquecidas) {
+      if (!fechaCol || !esFechaValida(r[fechaCol])) continue;
+      const d = aFechaJS(r[fechaCol]); if (!d) continue;
+      const clave = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+      mesMap.set(clave, (mesMap.get(clave) || 0) + r.__total__);
+    }
+    const ventasPorMes = Array.from(mesMap.entries()).sort((a,b)=> a[0].localeCompare(b[0]))
+      .map(([mes, total]) => ({ mes, total }));
+
+    // Top productos por total y por cantidad
+    const prodTotal = new Map(), prodCant = new Map();
+    for (const r of filasEnriquecidas) {
+      const prod = productoCol ? String(r[productoCol] || "N/A") : "N/A";
+      prodTotal.set(prod, (prodTotal.get(prod) || 0) + r.__total__);
+      prodCant.set(prod, (prodCant.get(prod) || 0) + r.__cantidad__);
+    }
+    const ingresosPorProducto = Array.from(prodTotal.entries()).map(([producto,total])=>({producto,total})).sort((a,b)=>b.total-a.total);
+    const cantidadPorProducto = Array.from(prodCant.entries()).map(([producto,cantidad])=>({producto,cantidad})).sort((a,b)=>b.cantidad-a.cantidad);
+
+    // Distribución por método de pago
+    const pagoMap = new Map();
+    for (const r of filasEnriquecidas) {
+      const pago = pagoCol ? String(r[pagoCol] || "N/A") : "N/A";
+      pagoMap.set(pago, (pagoMap.get(pago) || 0) + r.__total__);
+    }
+    const distribucionPago = Array.from(pagoMap.entries()).map(([metodo,total])=>({metodo,total}));
+
+    // Ventas por región/país
+    const regionMap = new Map();
+    for (const r of filasEnriquecidas) {
+      const reg = regionCol ? String(r[regionCol] || "N/A") : "N/A";
+      regionMap.set(reg, (regionMap.get(reg) || 0) + r.__total__);
+    }
+    const ventasPorRegion = Array.from(regionMap.entries()).map(([region,total])=>({region,total})).sort((a,b)=>b.total-a.total);
+
+    return { filasEnriquecidas, ventasPorMes, ingresosPorProducto, cantidadPorProducto, distribucionPago, ventasPorRegion };
+  }
+
+  // ----- Pintado de gráficos -----
+  function pintarLinea(ventasPorMes) {
+    const labels = ventasPorMes.map(d => d.mes);
+    const data = ventasPorMes.map(d => d.total);
+    const ctx = document.getElementById("chartLinea");
+    if (charts.linea) charts.linea.destroy();
+    charts.linea = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets: [{ label: "Ventas totales", data, tension: 0.3, fill: false }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  function pintarBarrasTop(top, etiqueta) {
+    const labels = top.map(d => d.producto);
+    const data = top.map(d => etiqueta === "cantidad" ? d.cantidad : d.total);
+    const ctx = document.getElementById("chartBarras");
+    if (charts.barras) charts.barras.destroy();
+    charts.barras = new Chart(ctx, {
+      type: "bar",
+      data: { labels, datasets: [{ label: etiqueta==="cantidad"?"Cantidad":"Total de venta", data }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+    document.getElementById("subtitulo-barras").textContent =
+      etiqueta==="cantidad" ? "por cantidad" : "por total de venta";
+  }
+
+  function pintarTorta(distribucionPago) {
+    const labels = distribucionPago.map(d => d.metodo);
+    const data = distribucionPago.map(d => d.total);
+    const ctx = document.getElementById("chartTorta");
+    if (charts.torta) charts.torta.destroy();
+    charts.torta = new Chart(ctx, {
+      type: "pie",
+      data: { labels, datasets: [{ data }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+    });
+  }
+
+  function pintarRegion(ventasPorRegion) {
+    const labels = ventasPorRegion.map(d => d.region);
+    const data = ventasPorRegion.map(d => d.total);
+    const ctx = document.getElementById("chartRegion");
+    if (charts.region) charts.region.destroy();
+    charts.region = new Chart(ctx, {
+      type: "bar",
+      data: { labels, datasets: [{ label: "Ventas por región/país", data }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { beginAtZero: true } } }
+    });
+  }
+
+  // ----- Inicio -----
+  async function iniciar() {
+    try {
+      document.getElementById("nombre-hoja").textContent = "Cargando…";
+
+      const { filas, nombreHoja } = await cargarExcel(RUTA_EXCEL);
+      document.getElementById("nombre-hoja").textContent = nombreHoja || "—";
+
+      if (!filas.length) { alert("La hoja está vacía o no se pudo leer."); return; }
+
+      FILAS_CACHE = filas.slice(); // guarda para filtros
+      renderTabla(FILAS_CACHE);
+
+      const cols = detectarColumnas(filas);
+      const t = enriquecerYTransformar(filas, cols);
+
+      // Gráficos
+      pintarLinea(t.ventasPorMes);
+      pintarBarrasTop(t.ingresosPorProducto.slice(0,5), "total");
+      pintarTorta(t.distribucionPago);
+      pintarRegion(t.ventasPorRegion);
+
+      // Selector del Top
+      const sel = document.getElementById("sel-top-metrica");
+      sel.onchange = () => {
+        if (sel.value === "cantidad") pintarBarrasTop(t.cantidadPorProducto.slice(0,5), "cantidad");
+        else pintarBarrasTop(t.ingresosPorProducto.slice(0,5), "total");
+      };
+
+      // Filtro rápido de tabla
+      const buscador = document.getElementById("buscador");
+      buscador.oninput = () => {
+        const q = normalizar(buscador.value);
+        if (!q) { renderTabla(FILAS_CACHE); return; }
+        const headers = Object.keys(FILAS_CACHE[0] || {});
+        const filtradas = FILAS_CACHE.filter(r =>
+          headers.some(h => String(r[h]).toLowerCase().includes(q))
+        );
+        renderTabla(filtradas);
+      };
+
+    } catch (e) {
+      console.error(e);
+      alert("Error al cargar los datos: " + e.message +
+            "\nAsegúrate de abrir el proyecto con un servidor HTTP y que 'assets/datos/datos.xlsx' exista.");
+    }
+  }
+
+  document.getElementById("btn-recargar").addEventListener("click", iniciar);
+  window.addEventListener("DOMContentLoaded", iniciar);
+  </script>
+</body>
+</html>
